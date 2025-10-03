@@ -157,6 +157,8 @@ def main():
                 label = cache[commit.hash]["label"]
                 confidence = cache[commit.hash]["confidence"]
                 rationale = cache[commit.hash].get("rationale")
+                cost = cache.get("cost", 0.0)
+                api_call_id = cache.get("api_call_id")
             else:
                 try:
                     print(f'commit hash:{commit.hash}')
@@ -203,7 +205,7 @@ def main():
         })
 
     # Write CSV
-    fieldnames = ["hash", "date", "author", "message", "lines_added", "lines_removed", "in_main_branch", "llm_label", "llm_confidence", "llm_rationale"]
+    fieldnames = ["hash", "date", "author", "message", "lines_added", "lines_removed", "in_main_branch", "llm_label", "llm_confidence", "llm_rationale", "api_call_id"]
     with open(commit_saveas, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
