@@ -61,7 +61,8 @@ Commit message:
 
     return {
         "classification": classification,
-        "cost": total_cost
+        "cost": total_cost,
+        "api_call_id": resp.id
     }
 
     # print(resp)
@@ -158,9 +159,11 @@ def main():
                 rationale = cache[commit.hash].get("rationale")
             else:
                 try:
+                    print(f'commit hash:{commit.hash}')
                     result = classify_commit_llm(msg_one_line)
                     classification = result["classification"]
                     cost = result["cost"] # Get the cost
+                    api_call_id = result["api_call_id"]
 
                     label = classification.get("label")
                     confidence = classification.get("confidence")
@@ -174,6 +177,7 @@ def main():
                         "confidence": confidence,
                         "rationale": rationale,
                         "msg": msg_one_line,
+                        "api_call_id": api_call_id,
                         "cost": cost
                     })
 
@@ -194,7 +198,8 @@ def main():
             "in_main_branch": commit.in_main_branch,
             "llm_label": label,
             "llm_confidence": confidence,
-            "llm_rationale": rationale
+            "llm_rationale": rationale,
+            "api_call_id": api_call_id
         })
 
     # Write CSV
