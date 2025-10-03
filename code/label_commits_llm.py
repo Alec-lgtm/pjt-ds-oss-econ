@@ -5,6 +5,10 @@ from pydriller import Repository, __version__ as pydriller_version
 import json
 from openai import OpenAI
 import os
+import statistics as stats
+
+INPUT_COST_PER_MILLION_TOKENS = 0.25
+OUTPUT_COST_PER_MILLION_TOKENS = 2.00
 
 client = OpenAI()
 
@@ -43,10 +47,27 @@ Commit message:
         #max_completion_tokens=200
     )
 
-    print(resp)
-    print(resp.choices[0].message.content)
+    if resp.usage:
+        input_cost = (resp.usage.prompt_tokens / 1_000_000) * INPUT_COST_PER_MILLION_TOKENS
+        output_cost = (resp.usage.completion_tokens / 1_000_000) * OUTPUT_COST_PER_MILLION_TOKENS
+        total_cost = input_cost + output_cost
+    else:
+        total_cost = 0.0
 
-    return json.loads(resp.choices[0].message.content)
+    # Return a dictionary with classification and cost
+    classification = json.loads(resp.choices[0].message.content)
+
+    print(f"classification: {classification.get('label')}\nrationale: {classification.get('rationale')}\nconfidence:{classification.get('confidence')}\n")
+
+    return {
+        "classification": classification,
+        "cost": total_cost
+    }
+
+    # print(resp)
+    # print(resp.choices[0].message.content)
+
+    # return json.loads(resp.choices[0].message.content)
 
 def parse_args():
     p = argparse.ArgumentParser(description="Get commit information and store as csv")
@@ -87,6 +108,8 @@ def main():
     args = parse_args()
     since, until = to_dt(args.since), to_dt(args.until)
 
+    token_prices = []
+
     name = args.saveas
     commit_saveas = f'../data/{name}_commit_info.csv'
     modified_file_saveas = f'../data/{name}_modified_file_info.csv'
@@ -112,7 +135,9 @@ def main():
         to=until,
         only_in_branch=args.branch
     )
+
     labeled_count = 0
+    total_api_cost = 0.0
 
 
     for commit in repo.traverse_commits():
@@ -133,19 +158,28 @@ def main():
                 rationale = cache[commit.hash].get("rationale")
             else:
                 try:
-                    out = classify_commit_llm(msg_one_line)
-                    label = out.get("label")
-                    confidence = out.get("confidence")
-                    rationale = out.get("rationale")
+                    result = classify_commit_llm(msg_one_line)
+                    classification = result["classification"]
+                    cost = result["cost"] # Get the cost
+
+                    label = classification.get("label")
+                    confidence = classification.get("confidence")
+                    rationale = classification.get("rationale")
+
+                    total_api_cost += cost
+                    token_prices.append(cost)
                     append_cache(args.label_cache, {
                         "hash": commit.hash,
                         "label": label,
                         "confidence": confidence,
                         "rationale": rationale,
-                        "msg": msg_one_line
+                        "msg": msg_one_line,
+                        "cost": cost
                     })
+
                 except Exception as e:
                     print(f"[WARN] LLM classify failed for {commit.hash[:8]}: {e}")
+
             if label is not None:
                 labeled_count += 1
 
@@ -172,6 +206,13 @@ def main():
             w.writerow(r)
 
     print(f"Commits scanned:       {commits_analyzed}")
+
+    if args.label:
+        print(f"Commits labeled:        {labeled_count}")
+        print(f"Total API cost: ${total_api_cost:.6f}")
+        if token_prices:
+            print(f"Median API cost: ${stats.median(token_prices):.6f}")
+            print(f"Average API cost: ${stats.mean(token_prices):.6f}")
 
 if __name__ == "__main__":
     main()
